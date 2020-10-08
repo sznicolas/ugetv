@@ -1,0 +1,124 @@
+#!/usr/bin/zsh
+
+
+# configure colored output
+LOLCMD=/usr/bin/lolcat
+SEED=$(( ( RANDOM % 255 )  + 1 ))
+LOLOPTS=(-a -d 55) 
+
+typeset -A symbols
+# symbols is the pair of coingecko name / displayed name by ugetv2
+# get symbol lis on https://api.coingecko.com/api/v3/coins/list
+symbols=(
+  bitcoin      btc
+  bitcoin-cash bch
+  ethereum     eth 
+  tezos        xtz
+  litecoin     ltc
+#  dai dai 
+  ethlend      aave
+  bcdiploma    bcdt
+  trustswap    swap
+  yfv-finance  yfv
+  cream-2      cream
+  uniswap      uni
+  yfbeta       yfb
+  )
+
+# coingecko pairs
+pairs=(
+  bitcoin.eur 
+  bitcoin.usd 
+  bitcoin-cash.usd
+  ethereum.usd 
+  tezos.usd
+#  tezos.btc 
+  litecoin.usd
+#  dai.eur 
+  ethlend.usd 
+  bcdiploma.usd
+  trustswap.usd
+  yfv-finance.usd
+  cream-2.usd
+  uniswap.usd
+  yfbeta.usd
+  )
+
+BASEURL="https://api.coingecko.com/api/v3/simple/price"
+
+# generate the query
+typeset -A currencies
+for c in $pairs; do
+  cur=$(echo $c | sed 's/\([^\.]*\)\.\(.*\)/\2/g')
+  currencies[$cur]=$cur
+done
+
+url="${BASEURL}?ids=${(kj.,.)symbols}&vs_currencies=${(j.,.)currencies}"
+
+# command line options
+# batchmode for infinite loop
+# noheader don't display the header
+zparseopts -E b=batchmode r=noheader
+#zparseopts -E b=batchmode c=colormode r=noheader
+
+#  ---------- Functions -------------------------------------
+function printhead(){
+    printf "[ <( - '' - )> ]"
+    for p in $pairs; do
+      q=(${(s:.:)p}) 
+      printf "%10s" ${symbols[${q[1]}]}/${q[2]}
+    done
+}
+
+function printsep(){
+    date +"%n\\ -%d- '' -%m- /   $seplines"
+}
+
+function printquotes(){
+    TXT=`date +"[%m-%d %H:%M:%S]"`
+    quotes=$(curl -sXGET "$url" -H "accept: application/json")
+    for p in $pairs; do
+        # bloody dash in bch
+        q=(${(s:.:)p}) 
+        price=$(echo $quotes | jq --arg a "${q[1]}" '.[$a].'${q[2]})
+        [[ $price -lt 1 ]] && fmt="%10.6f" || fmt="%10.2f"
+        TXT=${TXT}$(printf "$fmt" $price )
+    done
+    printf "$TXT\n"
+}
+# / ----------------------------------------------------------
+
+# build header
+for p in $pairs; do
+    seplines+="-------   "
+done
+seplines+="  	qbhcr"
+
+if [[ ! ${noheader} == "-r" ]]; then
+  #print first header
+  printhead
+  printsep
+fi
+
+# main
+
+if [[ ${batchmode} == "-b" ]]; then
+    key=" "
+    while [[ $key != "q" ]]; do
+        if [[ $key == "r" ]]; then
+          exec $0 $@ -r 
+        fi
+        [[ $key == "h" || $key == "b" ]] && printhead && printsep
+        printhead ; printf "\r`date +'[%m-%d %H:%M:%S]'`\r"
+        if [[ $key == "c" ]]; then
+            printquotes | $LOLCMD "${LOLOPTS[@]}" -S $SEED
+            SEED=$(( $SEED + 1 ))
+        else
+            printquotes
+        fi
+        read -t
+        read -k 1 -s key
+    done
+else
+    printquotes
+fi
